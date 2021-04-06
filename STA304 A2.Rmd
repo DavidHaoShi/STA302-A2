@@ -1,0 +1,213 @@
+---
+title: "STA304 A2"
+output:
+  pdf_document: default
+  word_document: default
+---
+# Q1
+### a) Choose one of the survey questions and identify one parameter of interest.
+Survey Question: Do you support or oppose defunding the police and redirecting 
+substantial portions of the police budget to other government services?
+
+Parameter of Interest:
+Proportion of the voting population that is not sure about the defunding and 
+redirecting proposal.
+
+### b) Based on the relevant cross tabulation table below your selected survey, choose one stratification variable and show the following:
+Stratification variable: Gender
+
+#### i.Weighted frequency: 
+```{r,echo=FALSE}
+ cat(paste("Estimate of the population parameter: ", 
+           "(498×0.078 + 516×0.099)/1014 = 0.089 ", 
+           "(0.0886 rounded to 3 decimal place, N_Male = 498, N_Female = 516) ",
+           "",
+           "variance_hat:",
+           "((498/1014)(0.078(1-0.078)/(577-1)) + (516/1014)(0.099(1-0.099)/(437-1)))/1014 +",
+           "((516/1014)(0.078(1-0.078)/(577-1)) + (498/1014)(0.099(1-0.099)/(436)))/1014^2",
+           "= 1.63302693×10^-7",
+           "",
+           "A bound on the error of estimation: ",
+           "2×sqrt(variance_hat) = 2×sqrt(1.63302693×10^-7) = 8.08×10^-4 ",
+           "",
+           "We ignored the FPC since the calculated value is close to 1",sep="\n"))
+```
+
+#### ii.Unweighted frequency: 
+```{r,echo=FALSE}
+ cat(paste("Estimate of the population parameter: ", 
+           "(577×0.078 + 437×0.099)/1014 = 0.087 ", 
+           "(0.0871 rounded to 3 decimal place, N_Male = 577, N_Female = 437)",
+           "",
+           "variance_hat:",
+           "(498/1014)^2(0.078(1-0.078)/(577-1)) + (516/1014)^2(0.099(1-0.099)/437-1) ",
+           "= 8.3093379×10^-5 ",
+           "",
+           "A bound on the error of estimation: ",
+           "2×sqrt(variance_hat) = 2×sqrt(8.3093379×10^-5) = 0.018",
+           "",
+           "We ignored the FPC since the calculated value is close to 1",sep="\n"))
+```
+
+	
+### c)	Compare the two estimates in part (b) above. Explain which is a post-stratified estimate.
+The estimate from the weighted frequency (i.) is post-stratified since the weights 
+are adjusted so that they match the known ratio between male and female in the 
+Ontario population. The estimate from the unweighted frequency (ii.) is not 
+balanced according to the Ontario population since it only represents the ratios 
+of the observed sample, hence it is not a post-stratified estimate.
+
+
+# Q2
+### a) Take a stratified random sample of 150 players, using proportional allocation with the different teams as strata (teams are in column 1 of the data file).  Describe how you selectedthe sample. Show your R codes used to obtain your stratified sample.
+
+```{r}
+library(tidyverse)
+library(sampling)
+
+baseball_data=read.csv("baseball.csv")
+N=dim(baseball_data)[1]; N
+n=150
+set.seed(2440)
+
+round(n*(table(baseball_data$team)/N))
+st_sample=strata(baseball_data,stratanames="team",size=rep(5,30), method="srswor")
+stratified_sample<-getdata(baseball_data,st_sample)
+stratified_sample<-stratified_sample %>%
+  group_by(team) %>%
+  mutate(s2_i=var(log(salary))) %>%
+  mutate(pitcher_proportion_per_team=sum(position=="P")/5)
+```
+
+We first use the table function to find how many observations there are in each 
+team, then we use those numbers to get their proportions to the N (797), We 
+multiply those proportions with n (150) and round the results to get the stratified 
+sample population of each team by proportional allocation (all are 5). Lastly, 
+we use strata() and getdata() to draw our stratified sample.
+
+### b) Find the mean of the variable logsal= ln(salary), using your stratified sample, and give a 95% CI.
+```{r}
+#sample means 
+mu_hat=mean(log(stratified_sample$salary)); mu_hat
+
+
+#construct a table with N_i,n_i and sample variance for each team
+table_b<-data.frame(table(baseball_data$team))
+table_b<-table_b %>%
+  mutate(n_i=5) %>%
+  rename(N_i=Freq) %>%
+  rename(team=Var1)
+
+table_b<-table_b %>%
+  mutate(s2_i=unique(stratified_sample$s2_i)) %>%
+  mutate(var_mu_hat_hat_team=((N_i^2/N^2)*(1-(n_i/N_i))*(s2_i/n_i)))
+
+glimpse(table_b)
+
+#computing a 95% CI using the sample
+var_mu_hat_hat<-sum(table_b$var_mu_hat_hat_team)
+stderror=sqrt(var_mu_hat_hat); stderror
+myCI=c(mu_hat-2*stderror,mu_hat+2*stderror)
+myCI
+
+```
+For simplicity, we round all the reported outputs (estimates and CIs) in this 
+assignment to two decimal places.
+The mean of the variable logsal from the stratified sample is 13.85 and 
+(13.68, 14.03) is the 95% CI.
+
+### c) Estimate the proportion of players in the data set who are pitchers, using your stratified sample, and give a 95% CI.
+```{r}
+
+#sample proportion 
+sample_pitcher_count=sum(stratified_sample$position=="P")
+sample_pitcher_proportion=sample_pitcher_count/n; 
+sample_pitcher_proportion
+
+#construct a table with p_i_hat,q_i_hat and sample variance for each team
+table_c<-table_b %>%
+  mutate(p_i_hat=stratified_sample[seq(1, n, 5), 35]) %>%
+  mutate(q_i_hat=1-stratified_sample[seq(1, n, 5), 35]) %>%
+  mutate(var_p_hat_hat_team=((N_i^2/N^2)*(1-(n_i/N_i))*(p_i_hat*q_i_hat)/(n_i-1)))
+
+#computing a 95% CI using the sample
+var_p_hat_hat_c<-sum(table_c$var_p_hat_hat_team)
+stderror_c=sqrt(var_p_hat_hat_c); stderror_c
+myCI_c=c(sample_pitcher_proportion-2*stderror_c,
+         sample_pitcher_proportion+2*stderror_c)
+myCI_c
+
+```
+The estimated proportion is 0.49 and (0.41, 0.56) is the 95% CI.
+
+### d) Take a simple random sample of 150 players and repeat part (c). How does your estimate compare with that of part (c).
+```{r}
+set.seed(2440) 
+srs<-baseball_data[sample(1:nrow(baseball_data), n),]
+glimpse(srs)
+
+#population and sample proportion 
+srs_sample_pitcher_count=sum(srs$position=="P")
+srs_pitcher_proportion=srs_sample_pitcher_count/n; 
+srs_pitcher_proportion
+
+population_pitcher_count=sum(baseball_data$position=="P")
+population_pitcher_proportion=population_pitcher_count/N; 
+population_pitcher_proportion
+
+#computing a 95% CI using the sample
+var_mu_hat_hat_d<-(1-(n/N))*(srs_pitcher_proportion*(1-srs_pitcher_proportion))/(n-1)
+stderror_d=sqrt(var_mu_hat_hat_d); stderror_d
+myCI_d=c(srs_pitcher_proportion-2*stderror_d,
+         srs_pitcher_proportion+2*stderror_d)
+myCI_d
+```
+The estimated proportion is 0.47 and (0.39, 0.54) is the 95% CI.
+When compare with the estimate from part (c), we see that the estimate produced 
+from the simple random sample is smaller than that of the stratified sample.
+
+### e) Examine the sample variances of logsal in each stratum. Do you think optimal allocation would be worthwhile for this problem?
+```{r}
+table_b
+```
+The s2_i column from table_b gives the sample variances of logsal in each stratum,
+we observe that the variances are unequal across strata (s2_i's are not all the same) 
+and we can see from the N_i column that the stratum sizes are roughly equal, hence 
+we can assume that the cost is about the same in each stratum. Therefore, a 
+Neyman allocation would be worthwhile for this problem.
+
+### f) Using the sample variances from (e) to estimate the population stratum variances,determine the optimal allocation for a sample in which the cost is the same in each stratum and the total sample size is 150.  How much does the optimal allocation differ from proportional allocation for this scenario?
+```{r}
+table_b<-table_b %>%
+  mutate(sigma_i=sqrt(s2_i)) %>%
+  mutate(N_i_by_sigma_i=N_i*sigma_i) %>%
+  mutate(proportional_allocation=N_i*(150/797)) %>%
+  mutate(optimal_allocation=n*N_i_by_sigma_i/sum(N_i_by_sigma_i)) %>%
+  mutate(rounded_proportional_allocation=round(proportional_allocation)) %>%
+  mutate(rounded_optimal_allocation=round(optimal_allocation)) %>%
+  mutate(population_stratum_variances=(N_i^2/N^2)*((N_i-n_i)/N_i)*(s2_i/n_i))
+
+table_b_compare<-table_b %>%
+  select(team,rounded_proportional_allocation,rounded_optimal_allocation,
+         population_stratum_variances)
+glimpse(table_b_compare)
+
+mean(table_b$rounded_proportional_allocation)
+mean(table_b$rounded_optimal_allocation)
+sqrt(var(table_b$rounded_optimal_allocation)) #standard deviation for the Neyman allocation
+
+boxplot(table_b_compare$rounded_proportional_allocation,
+        table_b_compare$rounded_optimal_allocation, ylab="Count", 
+        xlab="Allocation type", names=c("Proportional","Neyman"))
+```
+The estimates of the population stratum variances are shown by the table above.
+The optimal allocation for a sample in which the cost is the same in each stratum 
+and the total sample size is 150 is the Neyman allocation.
+For the optimal allocation: n_i= = N_i*(150sigma_i/sum(N_i_by_sigma_i))
+For proportional allocation: n_i= n(N_i/N) = N_i*(150/797)
+
+From the boxplot and the table above, we can see that their median is about the 
+same and the average of the proportional allocations is 5 while the Neyman 
+allocations has an average 4.93 and a standard deviation of 1.44
+Hence, we conclude that the optimal allocation does not differ by a lot from 
+proportional allocation for this scenario.
